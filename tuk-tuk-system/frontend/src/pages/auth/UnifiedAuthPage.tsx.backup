@@ -1,0 +1,1288 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Container,
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Paper,
+  Alert,
+  Stepper,
+  Step,
+  StepLabel,
+  ToggleButtonGroup,
+  ToggleButton,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  Divider,
+} from '@mui/material';
+import {
+  Phone as PhoneIcon,
+  Email as EmailIcon,
+  Lock as LockIcon,
+  Fingerprint as FingerprintIcon,
+  AccountBalance as DIDIcon,
+} from '@mui/icons-material';
+
+type AuthMode = 'login' | 'register';
+type AuthMethod = 'phone' | 'email-password' | 'email-passwordless' | 'ssi' | 'did';
+
+interface MethodConfig {
+  label: string;
+  icon: React.ReactNode;
+  steps: string[];
+  description: string;
+}
+
+const authMethods: Record<AuthMethod, MethodConfig> = {
+  phone: {
+    label: 'Phone Number',
+    icon: <PhoneIcon />,
+    steps: ['Phone Number', 'Verify OTP', 'Complete Profile'],
+    description: 'Fast and secure phone-based authentication',
+  },
+  'email-password': {
+    label: 'Email & Password',
+    icon: <LockIcon />,
+    steps: ['Enter Credentials'],
+    description: 'Traditional email and password login',
+  },
+  'email-passwordless': {
+    label: 'Email (Passwordless)',
+    icon: <EmailIcon />,
+    steps: ['Email Address', 'Verify Code'],
+    description: 'Secure passwordless authentication via email',
+  },
+  ssi: {
+    label: 'SSI (Self-Sovereign Identity)',
+    icon: <FingerprintIcon />,
+    steps: ['Generate Keys', 'Create Credential'],
+    description: 'Self-sovereign identity with verifiable credentials',
+  },
+  did: {
+    label: 'DID (Decentralized Identifier)',
+    icon: <DIDIcon />,
+    steps: ['Generate DID', 'Register Identity'],
+    description: 'Pure decentralized identifier protocol',
+  },
+};
+
+const UnifiedAuthPage: React.FC = () => {
+  const navigate = useNavigate();
+  
+  // Mode and method state
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('phone');
+  const [activeStep, setActiveStep] = useState(0);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    phone: '',
+    email: '',
+    password: '',
+    otp: '',
+    firstName: '',
+    lastName: '',
+  });
+  
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const currentMethod = authMethods[authMethod];
+  const isRegister = authMode === 'register';
+
+  const handleModeChange = (_: React.MouseEvent<HTMLElement>, newMode: AuthMode | null) => {
+    if (newMode) {
+      setAuthMode(newMode);
+      setActiveStep(0);
+      setError('');
+      setSuccess('');
+    }
+  };
+
+  const handleMethodChange = (event: any) => {
+    setAuthMethod(event.target.value as AuthMethod);
+    setActiveStep(0);
+    setError('');
+    setSuccess('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  // Phone Authentication Flow
+  const handlePhoneSendOTP = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:3001/api/otp/send/phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phone: formData.phone,
+          type: isRegister ? 'PHONE_VERIFICATION' : 'LOGIN_2FA'
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send OTP');
+      }
+
+      setSuccess('OTP sent to your phone!');
+      setActiveStep(1);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneVerifyOTP = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:3001/api/otp/verify/phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: formData.phone,
+          code: formData.otp,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Invalid OTP');
+      }
+
+      if (isRegister) {
+        setSuccess('Phone verified! Complete your profile');
+        setActiveStep(2);
+      } else {
+        // Login with phone OTP
+        await handlePhoneLogin(data.data.id);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Verification failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneLogin = async (otpId: string) => {
+    try {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: formData.phone,
+          otpVerified: true,
+          otpId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      localStorage.setItem('accessToken', data.data.accessToken);
+      localStorage.setItem('refreshToken', data.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(data.data.user));
+
+      navigate('/passenger/scan');
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+    }
+  };
+
+  const handlePhoneRegister = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:3001/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: formData.phone,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email || undefined,
+          password: formData.password,
+          phoneVerified: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Registration failed');
+      }
+
+      localStorage.setItem('accessToken', data.data.accessToken);
+      localStorage.setItem('refreshToken', data.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(data.data.user));
+
+      navigate('/passenger/scan');
+    } catch (err: any) {
+      setError(err.message || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Email + Password Flow
+  const handleEmailPasswordAuth = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
+      const payload = isRegister
+        ? {
+            email: formData.email,
+            password: formData.password,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+          }
+        : {
+            email: formData.email,
+            password: formData.password,
+          };
+
+      const response = await fetch(`http://localhost:3001${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `${isRegister ? 'Registration' : 'Login'} failed`);
+      }
+
+      localStorage.setItem('accessToken', data.data.accessToken);
+      localStorage.setItem('refreshToken', data.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(data.data.user));
+
+      navigate('/passenger/scan');
+    } catch (err: any) {
+      setError(err.message || `${isRegister ? 'Registration' : 'Login'} failed`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Email Passwordless Flow
+  const handleEmailPasswordlessSendOTP = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:3001/api/otp/send/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          type: isRegister ? 'EMAIL_VERIFICATION' : 'LOGIN_2FA',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send code');
+      }
+
+      setSuccess('Verification code sent to your email!');
+      setActiveStep(1);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailPasswordlessVerify = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:3001/api/otp/verify/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          code: formData.otp,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Invalid code');
+      }
+
+      if (isRegister) {
+        // Register with email
+        await handleEmailRegister(data.data.id);
+      } else {
+        // Passwordless login
+        await handlePasswordlessLogin(data.data.id);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Verification failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailRegister = async (otpId: string) => {
+    try {
+      const response = await fetch('http://localhost:3001/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          firstName: formData.firstName || 'User',
+          lastName: formData.lastName || '',
+          password: 'PASSWORDLESS_AUTH',
+          emailVerified: true,
+          otpId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Registration failed');
+      }
+
+      localStorage.setItem('accessToken', data.data.accessToken);
+      localStorage.setItem('refreshToken', data.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(data.data.user));
+
+      navigate('/passenger/scan');
+    } catch (err: any) {
+      setError(err.message || 'Registration failed');
+    }
+  };
+
+  const handlePasswordlessLogin = async (otpId: string) => {
+    try {
+      const response = await fetch('http://localhost:3001/api/auth/passwordless-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          otpId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      localStorage.setItem('accessToken', data.data.accessToken);
+      localStorage.setItem('refreshToken', data.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(data.data.user));
+
+      navigate('/passenger/scan');
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+    }
+  };
+
+  // SSI Flow - Verifiable Credentials
+  const handleSSIAuth = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const { registerWithSSI, loginWithSSI, downloadCredentials } = await import('../../services/ssi.service');
+
+      if (isRegister) {
+        // SSI Registration with Verifiable Credentials
+        const credentials = await registerWithSSI(
+          formData.firstName,
+          formData.lastName,
+          formData.email || undefined,
+          formData.phone || undefined
+        );
+        
+        // Download credentials file
+        downloadCredentials(credentials);
+        
+        setSuccess(`SSI Credential created! Credential ID: ${credentials.identity.credentialId}. Your credentials file has been downloaded.`);
+        
+        // Store credentials and auto-login
+        const loginResult = await loginWithSSI(credentials);
+        localStorage.setItem('accessToken', loginResult.data.accessToken);
+        localStorage.setItem('refreshToken', loginResult.data.refreshToken);
+        localStorage.setItem('user', JSON.stringify(loginResult.data.user));
+        
+        setTimeout(() => navigate('/passenger/scan'), 2000);
+      } else {
+        // SSI Login - upload credentials file
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.json';
+        
+        fileInput.onchange = async (e: any) => {
+          try {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const { parseCredentialsFile, loginWithSSI } = await import('../../services/ssi.service');
+            const credentials = await parseCredentialsFile(file);
+            
+            const loginResult = await loginWithSSI(credentials);
+            localStorage.setItem('accessToken', loginResult.data.accessToken);
+            localStorage.setItem('refreshToken', loginResult.data.refreshToken);
+            localStorage.setItem('user', JSON.stringify(loginResult.data.user));
+            
+            navigate('/passenger/scan');
+          } catch (err: any) {
+            setError(err.message || 'SSI login failed');
+            setLoading(false);
+          }
+        };
+        
+        fileInput.click();
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setError(err.message || `SSI ${isRegister ? 'registration' : 'login'} failed`);
+    } finally {
+      if (isRegister) setLoading(false);
+    }
+  };
+
+  // DID Flow - Pure Decentralized Identifier
+  const handleDIDAuth = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const { generateKeyPair } = await import('../../services/ssi.service');
+
+      if (isRegister) {
+        // Generate key pair
+        const keyPair = await generateKeyPair();
+        
+        // Register DID
+        const response = await fetch('/api/ssi/did/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            publicKey: keyPair.publicKey,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email || undefined,
+            phone: formData.phone || undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'DID registration failed');
+        }
+
+        const data = await response.json();
+        
+        // Download DID document with keys
+        const didDocument = {
+          type: 'Ebulan-Wings-DID-Document',
+          version: '1.0',
+          created: new Date().toISOString(),
+          did: data.data.did,
+          didDocument: data.data.didDocument,
+          keys: {
+            publicKey: keyPair.publicKey,
+            privateKey: keyPair.privateKey,
+            note: 'Keep your private key secure. This is required for authentication.',
+          },
+          identity: {
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email || 'Not provided',
+            phone: formData.phone || 'Not provided',
+          },
+          instructions: {
+            authentication: 'Use your DID and sign challenges with your private key',
+            security: 'Never share your private key',
+            recovery: 'If you lose your private key, you cannot recover this identity',
+          },
+        };
+
+        const blob = new Blob([JSON.stringify(didDocument, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `ebulan-wings-did-${data.data.did.substring(0, 20)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        setSuccess(`DID created: ${data.data.did}. Your DID document has been downloaded.`);
+        setTimeout(() => navigate('/auth/login'), 2000);
+      } else {
+        // DID Login - upload DID document
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.json';
+        
+        fileInput.onchange = async (e: any) => {
+          try {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = async (evt) => {
+              try {
+                const didDoc = JSON.parse(evt.target?.result as string);
+                
+                if (!didDoc.did || !didDoc.keys?.privateKey) {
+                  throw new Error('Invalid DID document format');
+                }
+                
+                // Generate and sign challenge
+                const challenge = `${didDoc.did}-${Date.now()}-${Math.random()}`;
+                const { signData } = await import('../../services/ssi.service');
+                const signature = await signData(challenge, didDoc.keys.privateKey);
+                
+                // Login with DID
+                const response = await fetch('/api/ssi/login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    did: didDoc.did,
+                    challenge,
+                    signature,
+                  }),
+                });
+
+                if (!response.ok) {
+                  const error = await response.json();
+                  throw new Error(error.error || 'DID login failed');
+                }
+
+                const data = await response.json();
+                localStorage.setItem('accessToken', data.data.accessToken);
+                localStorage.setItem('refreshToken', data.data.refreshToken);
+                localStorage.setItem('user', JSON.stringify(data.data.user));
+                
+                navigate('/passenger/scan');
+              } catch (err: any) {
+                setError(err.message || 'DID login failed');
+                setLoading(false);
+              }
+            };
+            reader.readAsText(file);
+          } catch (err: any) {
+            setError(err.message || 'DID login failed');
+            setLoading(false);
+          }
+        };
+        
+        fileInput.click();
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setError(err.message || `DID ${isRegister ? 'registration' : 'login'} failed`);
+    } finally {
+      if (isRegister) setLoading(false);
+    }
+  };
+
+  const handleNext = () => {
+    setError('');
+
+    // Phone method
+    if (authMethod === 'phone') {
+      if (activeStep === 0) {
+        handlePhoneSendOTP();
+      } else if (activeStep === 1) {
+        handlePhoneVerifyOTP();
+      } else if (activeStep === 2 && isRegister) {
+        handlePhoneRegister();
+      }
+    }
+    // Email passwordless
+    else if (authMethod === 'email-passwordless') {
+      if (activeStep === 0) {
+        handleEmailPasswordlessSendOTP();
+      } else if (activeStep === 1) {
+        handleEmailPasswordlessVerify();
+      }
+    }
+    // Email + password
+    else if (authMethod === 'email-password') {
+      handleEmailPasswordAuth();
+    }
+    // SSI - Verifiable Credentials
+    else if (authMethod === 'ssi') {
+      handleSSIAuth();
+    }
+    // DID - Decentralized Identifier
+    else if (authMethod === 'did') {
+      handleDIDAuth();
+    }
+  };
+
+  const handleResendOTP = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const endpoint = authMethod === 'phone' ? '/api/otp/resend' : '/api/otp/resend';
+      const payload = authMethod === 'phone'
+        ? { phone: formData.phone }
+        : { email: formData.email };
+
+      const response = await fetch(`http://localhost:3001${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resend code');
+      }
+
+      setSuccess('New code sent!');
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderStepContent = () => {
+    // Phone method
+    if (authMethod === 'phone') {
+      if (activeStep === 0) {
+        return (
+          <>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="phone"
+              label="Phone Number"
+              name="phone"
+              autoComplete="tel"
+              autoFocus
+              value={formData.phone}
+              onChange={handleInputChange}
+              placeholder="+254700123456"
+              InputProps={{
+                startAdornment: <PhoneIcon sx={{ mr: 1, color: 'action.active' }} />,
+              }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              We'll send you a verification code
+            </Typography>
+          </>
+        );
+      } else if (activeStep === 1) {
+        return (
+          <>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Enter the 6-digit code sent to {formData.phone}
+            </Typography>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="otp"
+              label="Verification Code"
+              name="otp"
+              autoFocus
+              value={formData.otp}
+              onChange={handleInputChange}
+              placeholder="123456"
+              inputProps={{ maxLength: 6, pattern: '[0-9]*' }}
+            />
+            <Button
+              variant="text"
+              onClick={handleResendOTP}
+              disabled={loading}
+              sx={{ mt: 1 }}
+            >
+              Resend Code
+            </Button>
+          </>
+        );
+      } else if (activeStep === 2 && isRegister) {
+        return (
+          <>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="firstName"
+              label="First Name"
+              name="firstName"
+              autoComplete="given-name"
+              autoFocus
+              value={formData.firstName}
+              onChange={handleInputChange}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="lastName"
+              label="Last Name"
+              name="lastName"
+              autoComplete="family-name"
+              value={formData.lastName}
+              onChange={handleInputChange}
+            />
+            <TextField
+              margin="normal"
+              fullWidth
+              id="email"
+              label="Email (Optional)"
+              name="email"
+              autoComplete="email"
+              value={formData.email}
+              onChange={handleInputChange}
+              placeholder="your@email.com"
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="password"
+              label="Password"
+              type="password"
+              id="password"
+              autoComplete="new-password"
+              value={formData.password}
+              onChange={handleInputChange}
+            />
+          </>
+        );
+      }
+    }
+
+    // Email + Password
+    if (authMethod === 'email-password') {
+      return (
+        <>
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="email"
+            label="Email Address"
+            name="email"
+            autoComplete="email"
+            autoFocus
+            value={formData.email}
+            onChange={handleInputChange}
+            placeholder="your@email.com"
+            InputProps={{
+              startAdornment: <EmailIcon sx={{ mr: 1, color: 'action.active' }} />,
+            }}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="password"
+            label="Password"
+            type="password"
+            id="password"
+            autoComplete={isRegister ? 'new-password' : 'current-password'}
+            value={formData.password}
+            onChange={handleInputChange}
+            InputProps={{
+              startAdornment: <LockIcon sx={{ mr: 1, color: 'action.active' }} />,
+            }}
+          />
+          {isRegister && (
+            <>
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="firstName"
+                label="First Name"
+                name="firstName"
+                autoComplete="given-name"
+                value={formData.firstName}
+                onChange={handleInputChange}
+              />
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="lastName"
+                label="Last Name"
+                name="lastName"
+                autoComplete="family-name"
+                value={formData.lastName}
+                onChange={handleInputChange}
+              />
+            </>
+          )}
+        </>
+      );
+    }
+
+    // Email Passwordless
+    if (authMethod === 'email-passwordless') {
+      if (activeStep === 0) {
+        return (
+          <>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="email"
+              label="Email Address"
+              name="email"
+              autoComplete="email"
+              autoFocus
+              value={formData.email}
+              onChange={handleInputChange}
+              placeholder="your@email.com"
+              InputProps={{
+                startAdornment: <EmailIcon sx={{ mr: 1, color: 'action.active' }} />,
+              }}
+            />
+            {isRegister && (
+              <>
+                <TextField
+                  margin="normal"
+                  required
+                  fullWidth
+                  id="firstName"
+                  label="First Name"
+                  name="firstName"
+                  value={formData.firstName}
+                  onChange={handleInputChange}
+                />
+                <TextField
+                  margin="normal"
+                  required
+                  fullWidth
+                  id="lastName"
+                  label="Last Name"
+                  name="lastName"
+                  value={formData.lastName}
+                  onChange={handleInputChange}
+                />
+              </>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              No password required - we'll send a verification code
+            </Typography>
+          </>
+        );
+      } else if (activeStep === 1) {
+        return (
+          <>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Enter the 6-digit code sent to {formData.email}
+            </Typography>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="otp"
+              label="Verification Code"
+              name="otp"
+              autoFocus
+              value={formData.otp}
+              onChange={handleInputChange}
+              placeholder="123456"
+              inputProps={{ maxLength: 6, pattern: '[0-9]*' }}
+            />
+            <Button
+              variant="text"
+              onClick={handleResendOTP}
+              disabled={loading}
+              sx={{ mt: 1 }}
+            >
+              Resend Code
+            </Button>
+          </>
+        );
+      }
+    }
+
+    // SSI - Verifiable Credentials
+    if (authMethod === 'ssi') {
+      return (
+        <>
+          {isRegister && (
+            <>
+              <TextField
+                margin="normal"
+                fullWidth
+                id="email"
+                label="Email (Optional)"
+                name="email"
+                autoComplete="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                placeholder="your@email.com"
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                id="phone"
+                label="Phone (Optional)"
+                name="phone"
+                autoComplete="tel"
+                value={formData.phone}
+                onChange={handleInputChange}
+                placeholder="+254700123456"
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                id="firstName"
+                label="First Name"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleInputChange}
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                id="lastName"
+                label="Last Name"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleInputChange}
+              />
+            </>
+          )}
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1 }}>
+            <Typography variant="body2" color="info.main">
+              <FingerprintIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+              {isRegister
+                ? 'Create a Self-Sovereign Identity with verifiable credentials'
+                : 'Upload your SSI credentials file to sign in'}
+            </Typography>
+          </Box>
+        </>
+      );
+    }
+
+    // DID - Decentralized Identifier
+    if (authMethod === 'did') {
+      return (
+        <>
+          {isRegister && (
+            <>
+              <TextField
+                margin="normal"
+                fullWidth
+                id="email"
+                label="Email (Optional)"
+                name="email"
+                autoComplete="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                placeholder="your@email.com"
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                id="phone"
+                label="Phone (Optional)"
+                name="phone"
+                autoComplete="tel"
+                value={formData.phone}
+                onChange={handleInputChange}
+                placeholder="+254700123456"
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                id="firstName"
+                label="First Name"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleInputChange}
+                required
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                id="lastName"
+                label="Last Name"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleInputChange}
+                required
+              />
+            </>
+          )}
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'success.lighter', borderRadius: 1 }}>
+            <Typography variant="body2" color="success.main">
+              <DIDIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+              {isRegister
+                ? 'Generate a pure Decentralized Identifier (DID) - No central authority'
+                : 'Upload your DID document to authenticate'}
+            </Typography>
+          </Box>
+        </>
+      );
+    }
+
+    return null;
+  };
+
+  const getButtonText = () => {
+    if (authMethod === 'phone') {
+      if (activeStep === 0) return 'Send Code';
+      if (activeStep === 1) return 'Verify';
+      if (activeStep === 2) return 'Complete Registration';
+    }
+    if (authMethod === 'email-passwordless') {
+      if (activeStep === 0) return 'Send Code';
+      if (activeStep === 1) return isRegister ? 'Complete Registration' : 'Sign In';
+    }
+    if (authMethod === 'email-password') {
+      return isRegister ? 'Register' : 'Sign In';
+    }
+    if (authMethod === 'ssi') {
+      return isRegister ? 'Create SSI Credential' : 'Upload Credentials';
+    }
+    if (authMethod === 'did') {
+      return isRegister ? 'Generate DID' : 'Upload DID Document';
+    }
+    return 'Continue';
+  };
+
+  const isButtonDisabled = () => {
+    if (authMethod === 'phone') {
+      if (activeStep === 0) return !formData.phone;
+      if (activeStep === 1) return formData.otp.length !== 6;
+      if (activeStep === 2) return !formData.firstName || !formData.lastName || !formData.password;
+    }
+    if (authMethod === 'email-passwordless') {
+      if (activeStep === 0) return !formData.email || (isRegister && (!formData.firstName || !formData.lastName));
+      if (activeStep === 1) return formData.otp.length !== 6;
+    }
+    if (authMethod === 'email-password') {
+      return !formData.email || !formData.password || (isRegister && (!formData.firstName || !formData.lastName));
+    }
+    if (authMethod === 'ssi' || authMethod === 'did') {
+      return isRegister && (!formData.firstName || !formData.lastName);
+    }
+    return false;
+  };
+
+  return (
+    <Container component="main" maxWidth="sm">
+      <Box
+        sx={{
+          marginTop: 4,
+          marginBottom: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}
+      >
+        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
+          {/* Header */}
+          <Box sx={{ mb: 3, textAlign: 'center' }}>
+            <Typography component="h1" variant="h4" gutterBottom>
+              Welcome to Ebulan Wings
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Taxi & Cargo Services
+            </Typography>
+          </Box>
+
+          {/* Mode Toggle */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+            <ToggleButtonGroup
+              value={authMode}
+              exclusive
+              onChange={handleModeChange}
+              aria-label="authentication mode"
+              fullWidth
+              sx={{
+                maxWidth: 400,
+                '& .MuiToggleButton-root': {
+                  border: '2px solid #e0e0e0',
+                  '&.Mui-selected': {
+                    bgcolor: '#FFB300',
+                    color: 'white',
+                    borderColor: '#FFB300',
+                    '&:hover': {
+                      bgcolor: '#FFA000',
+                    },
+                  },
+                },
+              }}
+            >
+              <ToggleButton value="login" aria-label="login">
+                <Typography variant="button" fontWeight={authMode === 'login' ? 700 : 400}>
+                  Sign In
+                </Typography>
+              </ToggleButton>
+              <ToggleButton value="register" aria-label="register">
+                <Typography variant="button" fontWeight={authMode === 'register' ? 700 : 400}>
+                  Register
+                </Typography>
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
+          <Divider sx={{ mb: 3 }} />
+
+          {/* Method Selector */}
+          <FormControl fullWidth sx={{ mb: 3 }}>
+            <InputLabel id="auth-method-label">Authentication Method</InputLabel>
+            <Select
+              labelId="auth-method-label"
+              id="auth-method"
+              value={authMethod}
+              label="Authentication Method"
+              onChange={handleMethodChange}
+            >
+              <MenuItem value="phone">
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <PhoneIcon sx={{ mr: 1 }} />
+                  {authMethods.phone.label}
+                </Box>
+              </MenuItem>
+              <MenuItem value="email-password">
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <LockIcon sx={{ mr: 1 }} />
+                  {authMethods['email-password'].label}
+                </Box>
+              </MenuItem>
+              <MenuItem value="email-passwordless">
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <EmailIcon sx={{ mr: 1 }} />
+                  {authMethods['email-passwordless'].label}
+                </Box>
+              </MenuItem>
+              <MenuItem value="ssi">
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <FingerprintIcon sx={{ mr: 1 }} />
+                  {authMethods.ssi.label}
+                </Box>
+              </MenuItem>
+              <MenuItem value="did">
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <DIDIcon sx={{ mr: 1 }} />
+                  {authMethods.did.label}
+                </Box>
+              </MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Method Description */}
+          <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block', textAlign: 'center' }}>
+            {currentMethod.description}
+          </Typography>
+
+          {/* Stepper - show for all methods */}
+          <Stepper
+            activeStep={activeStep}
+            sx={{
+              mb: 4,
+              '& .MuiStepLabel-root .Mui-completed': {
+                color: '#FFB300',
+              },
+              '& .MuiStepLabel-root .Mui-active': {
+                color: '#FFB300',
+              },
+              '& .MuiStepConnector-line': {
+                borderColor: '#e0e0e0',
+              },
+              '& .MuiStepConnector-root.Mui-completed .MuiStepConnector-line': {
+                borderColor: '#FFB300',
+              },
+              '& .MuiStepConnector-root.Mui-active .MuiStepConnector-line': {
+                borderColor: '#FFB300',
+              },
+            }}
+          >
+            {currentMethod.steps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+
+          {/* Alerts */}
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+              {error}
+            </Alert>
+          )}
+          {success && (
+            <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
+              {success}
+            </Alert>
+          )}
+
+          {/* Form Content */}
+          <Box component="form" onSubmit={(e) => { e.preventDefault(); handleNext(); }} noValidate>
+            {renderStepContent()}
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              sx={{ mt: 3, mb: 2 }}
+              disabled={loading || isButtonDisabled()}
+            >
+              {loading ? 'Processing...' : getButtonText()}
+            </Button>
+
+            {/* Back Button for multi-step */}
+            {activeStep > 0 && (authMethod === 'phone' || authMethod === 'email-passwordless') && (
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => setActiveStep(activeStep - 1)}
+                disabled={loading}
+                sx={{ mb: 2 }}
+              >
+                Back
+              </Button>
+            )}
+          </Box>
+        </Paper>
+      </Box>
+    </Container>
+  );
+};
+
+export default UnifiedAuthPage;

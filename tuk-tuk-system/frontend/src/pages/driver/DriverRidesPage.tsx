@@ -1,0 +1,1 @@
+import React from 'react'; import { Container, Typography } from '@mui/material'; const DriverRidesPage: React.FC = () => { return (<Container><Typography variant="h4">Driver Rides</Typography></Container>); }; export default DriverRidesPage;

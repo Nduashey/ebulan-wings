@@ -1,0 +1,1 @@
+import React from 'react'; import { Container, Typography } from '@mui/material'; const ProfilePage: React.FC = () => { return (<Container><Typography variant="h4">Profile Page</Typography></Container>); }; export default ProfilePage;

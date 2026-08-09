@@ -1,0 +1,1 @@
+import React from 'react'; import { Container, Typography } from '@mui/material'; const DriverDashboard: React.FC = () => { return (<Container><Typography variant="h4">Driver Dashboard</Typography></Container>); }; export default DriverDashboard;

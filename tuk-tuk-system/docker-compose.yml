@@ -1,0 +1,197 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: eaa-postgres
+    environment:
+      POSTGRES_USER: eaa_user
+      POSTGRES_PASSWORD: eaa_password
+      POSTGRES_DB: eaa_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - eaa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eaa_user -d eaa_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB
+  mongodb:
+    image: mongo:7
+    container_name: eaa-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: eaa_user
+      MONGO_INITDB_ROOT_PASSWORD: eaa_password
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - eaa-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: eaa-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - eaa-network
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: eaa-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: eaa_user
+      RABBITMQ_DEFAULT_PASS: eaa_password
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - eaa-network
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: eaa-auth-service
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DATABASE_URL=postgresql://eaa_user:eaa_password@postgres:5432/eaa_db
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-in-production
+      - REDIS_URL=redis://redis:6379
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3100
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - eaa-network
+    restart: unless-stopped
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: eaa-api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - BOOKING_SERVICE_URL=http://booking-service:3002
+    depends_on:
+      - redis
+      - auth-service
+      - booking-service
+    networks:
+      - eaa-network
+    restart: unless-stopped
+
+  # Booking Service
+  booking-service:
+    build:
+      context: ./services/booking-service
+      dockerfile: Dockerfile
+    container_name: eaa-booking-service
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=eaa_db
+      - DB_USER=eaa_user
+      - DB_PASSWORD=eaa_password
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3100
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - eaa-network
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: eaa-frontend
+    ports:
+      - "3100:3100"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3000
+      - REACT_APP_WS_URL=ws://localhost:3005
+    depends_on:
+      - api-gateway
+    networks:
+      - eaa-network
+    restart: unless-stopped
+  admin-gateway:
+    build:
+      context: ./services/admin-gateway
+      dockerfile: Dockerfile
+    container_name: eaa-admin-gateway
+    ports:
+      - "3010:3010"
+    environment:
+      - NODE_ENV=production
+      - PORT=3010
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key}
+      - ADMIN_CORS_ORIGINS=http://localhost:3200
+      - ADMIN_SERVICE_URL=http://admin-service:3007
+      - BOOKING_SERVICE_URL=http://booking-service:3002
+      - DRIVER_SERVICE_URL=http://driver-service:3003
+      - PAYMENT_SERVICE_URL=http://payment-service:3004
+      - LOCATION_SERVICE_URL=http://location-service:3006
+      - AUTH_SERVICE_URL=http://auth-service:3001
+    networks:
+      - eaa-network
+    restart: unless-stopped
+    depends_on:
+      
+      #- booking-service
+      - booking-service
+      - auth-service
+
+  admin-frontend:
+    build:
+      context: ./admin-frontend
+      dockerfile: Dockerfile
+    container_name: eaa-admin-frontend
+    ports:
+      - "3200:80"
+    networks:
+      - eaa-network
+    restart: unless-stopped
+    depends_on:
+      - admin-gateway
+
+networks:
+  eaa-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  redis_data:
+  rabbitmq_data:

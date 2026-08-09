@@ -1,0 +1,1 @@
+import React from 'react'; import { Container, Typography } from '@mui/material'; const PaymentPage: React.FC = () => { return (<Container><Typography variant="h4">Payment Page</Typography></Container>); }; export default PaymentPage;

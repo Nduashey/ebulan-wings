@@ -1,0 +1,2 @@
+import adminRoutes from './routes/admin.routes';
+import { initAdminTable } from './database/init-admin';

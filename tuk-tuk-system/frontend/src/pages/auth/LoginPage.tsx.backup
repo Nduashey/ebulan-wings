@@ -1,0 +1,281 @@
+import React, { useState } from 'react';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import {
+  Container,
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Link,
+  Paper,
+  Alert,
+  Divider,
+} from '@mui/material';
+import { Google as GoogleIcon, Email as EmailIcon, CloudUpload as CloudUploadIcon } from '@mui/icons-material';
+import { signData } from '../../services/ssi.service';
+
+const LoginPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    emailOrPhone: '',
+    password: '',
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      // Determine if input is email or phone
+      const isPhone = /^[\+]?[0-9]{10,15}$/.test(formData.emailOrPhone);
+      const loginPayload = isPhone 
+        ? { phone: formData.emailOrPhone, password: formData.password }
+        : { email: formData.emailOrPhone, password: formData.password };
+
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginPayload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      // Store tokens and user data (SSI-inspired: user controls their credentials)
+      localStorage.setItem('accessToken', data.data.accessToken);
+      localStorage.setItem('refreshToken', data.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(data.data.user));
+      
+      navigate('/passenger/scan');
+    } catch (err: any) {
+      setError(err.message || 'Login failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDIDLogin = async () => {
+    setError('');
+    setLoading(true);
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json';
+
+    fileInput.onchange = async (e: any) => {
+      try {
+        const file = e.target.files[0];
+        if (!file) {
+          setLoading(false);
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const doc = JSON.parse(evt.target?.result as string);
+            console.log('Document loaded, type:', doc.type);
+
+            // Check if it's a DID document
+            if (doc.type === 'Ebulan-Wings-DID-Document' && doc.did && doc.keys?.privateKey) {
+              // DID Login Flow
+              console.log('DID Document detected:', doc.did);
+
+              const challenge = `${doc.did}-${Date.now()}-${Math.random()}`;
+              const signature = await signData(challenge, doc.keys.privateKey);
+
+              const response = await fetch('/api/ssi/login/did', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ did: doc.did, challenge, signature }),
+              });
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'DID login failed');
+              }
+
+              const data = await response.json();
+              console.log('DID login successful');
+              localStorage.setItem('accessToken', data.data.accessToken);
+              localStorage.setItem('refreshToken', data.data.refreshToken);
+              localStorage.setItem('user', JSON.stringify(data.data.user));
+              navigate('/passenger/scan');
+            } 
+            // Check if it's an SSI credentials document
+            else if (doc.type === 'Ebulan-Wings-SSI-Credentials' && doc.identity && doc.authentication?.privateKey) {
+              // SSI Login Flow
+              console.log('SSI Credentials detected');
+
+              const credentialId = doc.identity.credentialId || doc.identity.id;
+              const publicKeyHash = doc.authentication.publicKey.substring(0, 64);
+              const challenge = `${credentialId}-${Date.now()}-${Math.random()}`;
+              const signature = await signData(challenge, doc.authentication.privateKey);
+
+              const response = await fetch('/api/ssi/login/ssi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ credentialId, publicKeyHash, challenge, signature }),
+              });
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'SSI login failed');
+              }
+
+              const data = await response.json();
+              console.log('SSI login successful');
+              localStorage.setItem('accessToken', data.data.accessToken);
+              localStorage.setItem('refreshToken', data.data.refreshToken);
+              localStorage.setItem('user', JSON.stringify(data.data.user));
+              navigate('/passenger/scan');
+            } else {
+              throw new Error('Invalid credential file. Please upload an SSI or DID document.');
+            }
+          } catch (err: any) {
+            setError(err.message || 'Authentication failed');
+            setLoading(false);
+          }
+        };
+        reader.readAsText(file);
+      } catch (err: any) {
+        setError(err.message || 'DID login failed');
+        setLoading(false);
+      }
+    };
+
+    fileInput.click();
+  };
+
+  const handleGoogleLogin = () => {
+    // TODO: Implement Google OAuth
+    window.location.href = '/api/auth/google';
+  };
+
+  const handleEmailLogin = () => {
+    // Navigate to email-based passwordless login
+    navigate('/login/email');
+  };
+
+  return (
+    <Container component="main" maxWidth="xs">
+      <Box
+        sx={{
+          marginTop: 8,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}
+      >
+        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
+          <Typography component="h1" variant="h4" align="center" gutterBottom>
+            Welcome to Ebulan Wings
+          </Typography>
+          <Typography variant="body2" color="text.secondary" align="center" paragraph>
+            Sign in to continue
+          </Typography>
+          
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Box component="form" onSubmit={handleSubmit} noValidate>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="emailOrPhone"
+              label="Email or Phone Number"
+              name="emailOrPhone"
+              autoComplete="username"
+              autoFocus
+              value={formData.emailOrPhone}
+              onChange={handleChange}
+              placeholder="+254700123456 or email@example.com"
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="password"
+              label="Password"
+              type="password"
+              id="password"
+              autoComplete="current-password"
+              value={formData.password}
+              onChange={handleChange}
+            />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              sx={{ mt: 3, mb: 2 }}
+              disabled={loading}
+            >
+              {loading ? 'Signing In...' : 'Sign In'}
+            </Button>
+
+            <Divider sx={{ my: 2 }}>Or sign in with</Divider>
+
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<GoogleIcon />}
+              onClick={handleGoogleLogin}
+              sx={{ mb: 1 }}
+            >
+              Continue with Google
+            </Button>
+
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<EmailIcon />}
+              onClick={handleEmailLogin}
+              sx={{ mb: 1 }}
+            >
+              Continue with Email (Passwordless)
+            </Button>
+
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<CloudUploadIcon />}
+              onClick={handleDIDLogin}
+              disabled={loading}
+              sx={{ mb: 2 }}
+            >
+              Sign In with SSI/DID Document
+            </Button>
+
+            <Box sx={{ textAlign: 'center' }}>
+              <Link component={RouterLink} to="/forgot-password" variant="body2" sx={{ display: 'block', mb: 2 }}>
+                Forgot password?
+              </Link>
+              <Link component={RouterLink} to="/register" variant="body2">
+                {"Don't have an account? Sign Up"}
+              </Link>
+            </Box>
+          </Box>
+        </Paper>
+      </Box>
+    </Container>
+  );
+};
+
+export default LoginPage;

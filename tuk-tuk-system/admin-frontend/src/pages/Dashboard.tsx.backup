@@ -1,0 +1,58 @@
+import { Box, Grid, Paper, Typography } from '@mui/material';
+import {
+  DirectionsCar,
+  People,
+  LocalShipping,
+  AttachMoney,
+} from '@mui/icons-material';
+
+export default function Dashboard() {
+  const stats = [
+    { title: 'Total Bookings', value: '1,234', icon: <DirectionsCar />, color: '#FFA500' },
+    { title: 'Active Drivers', value: '56', icon: <LocalShipping />, color: '#4CAF50' },
+    { title: 'Total Users', value: '890', icon: <People />, color: '#2196F3' },
+    { title: 'Revenue', value: '$45.2K', icon: <AttachMoney />, color: '#FF5722' },
+  ];
+
+  return (
+    <Box>
+      <Typography variant="h4" gutterBottom>
+        Dashboard
+      </Typography>
+
+      <Grid container spacing={3}>
+        {stats.map((stat) => (
+          <Grid item xs={12} sm={6} md={3} key={stat.title}>
+            <Paper
+              sx={{
+                p: 3,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                bgcolor: stat.color,
+                color: 'white',
+              }}
+            >
+              <Box sx={{ fontSize: 40, mb: 1 }}>{stat.icon}</Box>
+              <Typography variant="h4" gutterBottom>
+                {stat.value}
+              </Typography>
+              <Typography variant="body2">{stat.title}</Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
+
+      <Box sx={{ mt: 4 }}>
+        <Typography variant="h6" gutterBottom>
+          Recent Activity
+        </Typography>
+        <Paper sx={{ p: 3 }}>
+          <Typography color="text.secondary">
+            Activity feed will be displayed here...
+          </Typography>
+        </Paper>
+      </Box>
+    </Box>
+  );
+}

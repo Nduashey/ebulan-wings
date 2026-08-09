@@ -1,0 +1,71 @@
+{
+  "name": "eaa-tuktuk-system",
+  "version": "1.0.0",
+  "description": "EAA Airport Tuk-Tuk Digital Taxi System - Microservices Architecture",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:gateway\" \"npm run dev:services\"",
+    "dev:frontend": "cd frontend && npm start",
+    "dev:gateway": "cd services/api-gateway && npm run dev",
+    "dev:services": "concurrently \"npm run dev:auth\" \"npm run dev:booking\" \"npm run dev:driver\" \"npm run dev:payment\" \"npm run dev:notification\" \"npm run dev:location\" \"npm run dev:admin\"",
+    "dev:auth": "cd services/auth-service && npm run dev",
+    "dev:booking": "cd services/booking-service && npm run dev",
+    "dev:driver": "cd services/driver-service && npm run dev",
+    "dev:payment": "cd services/payment-service && npm run dev",
+    "dev:notification": "cd services/notification-service && npm run dev",
+    "dev:location": "cd services/location-service && npm run dev",
+    "dev:admin": "cd services/admin-service && npm run dev",
+    "install:all": "npm install && npm run install:services && npm run install:frontend",
+    "install:services": "for dir in services/*; do (cd \"$dir\" && npm install); done",
+    "install:frontend": "cd frontend && npm install",
+    "build": "npm run build:frontend && npm run build:services",
+    "build:frontend": "cd frontend && npm run build",
+    "build:services": "for dir in services/*; do (cd \"$dir\" && npm run build); done",
+    "test": "npm run test:services && npm run test:frontend",
+    "test:services": "for dir in services/*; do (cd \"$dir\" && npm test); done",
+    "test:frontend": "cd frontend && npm test",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "k8s:deploy": "kubectl apply -f infrastructure/kubernetes/",
+    "k8s:delete": "kubectl delete -f infrastructure/kubernetes/",
+    "migrate": "npm run migrate:auth && npm run migrate:booking && npm run migrate:driver && npm run migrate:payment",
+    "migrate:auth": "cd services/auth-service && npm run migrate",
+    "migrate:booking": "cd services/booking-service && npm run migrate",
+    "migrate:driver": "cd services/driver-service && npm run migrate",
+    "migrate:payment": "cd services/payment-service && npm run migrate"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eaa/tuk-tuk-system.git"
+  },
+  "keywords": [
+    "tuk-tuk",
+    "taxi",
+    "booking",
+    "microservices",
+    "airport",
+    "qr-code",
+    "ride-hailing"
+  ],
+  "author": "EAA Development Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

@@ -1,0 +1,189 @@
+// Prisma schema for Auth Service
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+model User {
+  id            String      @id @default(uuid())
+  username      String?     @unique
+  email         String      @unique
+  password      String
+  firstName     String
+  lastName      String
+  phone         String?     @unique
+  role          UserRole    @default(PASSENGER)
+  status        UserStatus  @default(PENDING_VERIFICATION)
+  emailVerified Boolean     @default(false)
+  phoneVerified Boolean     @default(false)
+  avatar        String?
+  
+  // SSI (Self-Sovereign Identity) fields
+  did           String?     @unique
+  didDocument   String?     @db.Text
+  publicKey     String?     @db.Text
+  
+  // Timestamps
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  lastLoginAt   DateTime?
+  
+  // Relations
+  refreshTokens RefreshToken[]
+  sessions      Session[]
+  profile       Profile?
+  driver        Driver?
+  credentials   VerifiableCredential[]
+  
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  @@map("refresh_tokens")
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  @@map("sessions")
+  @@index([userId])
+}
+
+model Profile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateOfBirth DateTime?
+  address     String?
+  city        String?
+  country     String?
+  postalCode  String?
+  emergencyContact String?
+  emergencyPhone   String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("profiles")
+}
+
+model Driver {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenseNumber String   @unique
+  vehicleType   String
+  vehiclePlate  String   @unique
+  vehicleModel  String?
+  vehicleColor  String?
+  rating        Float    @default(5.0)
+  totalRides    Int      @default(0)
+  isApproved    Boolean  @default(false)
+  isAvailable   Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@map("drivers")
+}
+
+model OTP {
+  id        String   @id @default(uuid())
+  phone     String?
+  email     String?
+  code      String
+  type      OTPType
+  verified  Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([phone, code])
+  @@index([email, code])
+  @@map("otps")
+}
+
+enum OTPType {
+  PHONE_VERIFICATION
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  LOGIN_2FA
+}
+
+// SSI (Self-Sovereign Identity) Models
+
+model VerifiableCredential {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  did              String
+  type             String
+  credential       String    @db.Text
+  issuedAt         DateTime  @default(now())
+  expiresAt        DateTime?
+  revoked          Boolean   @default(false)
+  revokedAt        DateTime?
+  revocationReason String?
+  
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([did])
+  @@map("verifiable_credentials")
+}
+
+model DIDRegistry {
+  id           String   @id @default(uuid())
+  did          String   @unique
+  didDocument  String   @db.Text
+  controller   String
+  created      DateTime @default(now())
+  updated      DateTime @updatedAt
+  deactivated  Boolean  @default(false)
+  
+  @@map("did_registry")
+}
+
+model CredentialRevocationList {
+  id            String   @id @default(uuid())
+  credentialId  String   @unique
+  revokedAt     DateTime @default(now())
+  reason        String?
+  issuer        String
+  
+  @@index([issuer])
+  @@map("credential_revocation_list")
+}

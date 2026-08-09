@@ -1,0 +1,1 @@
+import React from 'react'; import { Container, Typography } from '@mui/material'; const AdminUsersPage: React.FC = () => { return (<Container><Typography variant="h4">Admin Users</Typography></Container>); }; export default AdminUsersPage;

@@ -1,0 +1,1 @@
+import React from 'react'; import { Container, Typography } from '@mui/material'; const QRScanPage: React.FC = () => { return (<Container><Typography variant="h4">QR Scanner - To be implemented</Typography></Container>); }; export default QRScanPage;

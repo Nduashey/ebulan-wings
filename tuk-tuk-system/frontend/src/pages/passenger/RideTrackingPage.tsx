@@ -1,0 +1,1 @@
+import React from 'react'; import { Container, Typography } from '@mui/material'; const RideTrackingPage: React.FC = () => { return (<Container><Typography variant="h4">Ride Tracking</Typography></Container>); }; export default RideTrackingPage;

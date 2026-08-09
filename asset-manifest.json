@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/ebulan-wings/static/css/main.4cf9056f.css",
+    "main.js": "/ebulan-wings/static/js/main.892b0e31.js",
+    "static/js/39.67421c87.chunk.js": "/ebulan-wings/static/js/39.67421c87.chunk.js",
+    "index.html": "/ebulan-wings/index.html",
+    "main.4cf9056f.css.map": "/ebulan-wings/static/css/main.4cf9056f.css.map",
+    "main.892b0e31.js.map": "/ebulan-wings/static/js/main.892b0e31.js.map",
+    "39.67421c87.chunk.js.map": "/ebulan-wings/static/js/39.67421c87.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.4cf9056f.css",
+    "static/js/main.892b0e31.js"
+  ]
+}
